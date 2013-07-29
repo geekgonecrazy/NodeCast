@@ -1,3 +1,4 @@
+//Using @OrangeDog 's version of node-uuid https://github.com/OrangeDog/node-uuid includes uuid v5 which Chromecast uses
 var uuid = require('node-uuid');
 var dgram = require('dgram');
 
