@@ -1,3 +1,4 @@
+//Using @OrangeDog 's version of node-uuid https://github.com/OrangeDog/node-uuid includes uuid v5 which Chromecast uses
 var uuid = require('node-uuid');
 var dgram = require('dgram');
 
@@ -12,24 +13,24 @@ message = 'HTTP/1.1 200 OK\n'+
 '\nST: urn:dial-multiscreen-org:service:dial:1\n\n';
 console.log(message);
 ssdp.on('listening', function () {
-	console.log('SSDP started');
+    console.log('SSDP started');
 });
 
 ssdp.on('message', function (msg, rinfo) {
-	var decodedMsg = msg.toString('utf8');
+    var decodedMsg = msg.toString('utf8');
 
-	if (decodedMsg.indexOf('M-SEARCH') > -1 && decodedMsg.indexOf('urn:dial-multiscreen-org:service:dial:1') > -1) {
-		ssdp.send(new Buffer(message), 0, message.length, rinfo.port, rinfo.address, function(err, bytes){
-			if (!err) {
-				console.log('SSDP response to: '+rinfo.address);
-			}
-		});
-	}
+    if (decodedMsg.indexOf('M-SEARCH') > -1 && decodedMsg.indexOf('urn:dial-multiscreen-org:service:dial:1') > -1) {
+        ssdp.send(new Buffer(message), 0, message.length, rinfo.port, rinfo.address, function(err, bytes){
+            if (!err) {
+                console.log('SSDP response to: '+rinfo.address);
+            }
+        });
+    }
 
 });
 
 ssdp.bind(1900, function(){
-	ssdp.addMembership('239.255.255.250');
+    ssdp.addMembership('239.255.255.250');
 });
 
 var express = require('express');
@@ -44,13 +45,13 @@ app.use(function(req, res, next){
     //console.log(req.headers['user-agent']);
     console.log(req.method, req.url);
     if (req.method == 'POST') {
-    	console.log(req.body);
+        console.log(req.body);
     }
     next();
 });
 
 app.get('/ssdp/device-desc.xml', function(req, res) {
-	var body = '<?xml version="1.0" encoding="utf-8"?>'+
+    var body = '<?xml version="1.0" encoding="utf-8"?>'+
     '<root xmlns="urn:schemas-upnp-org:device-1-0" xmlns:r="urn:restful-tv-org:schemas:upnp-dd">'+
         '<specVersion>'+
         '<major>1</major>'+
@@ -84,9 +85,9 @@ app.get('/ssdp/device-desc.xml', function(req, res) {
 });
 
 app.get('/apps', function(req, res) {
-	if (active_app) {
-		res.redirect('/apps/'+active_app);
-	}
+    if (active_app) {
+        res.redirect('/apps/'+active_app);
+    }
 });
 
 var services = [];
@@ -95,43 +96,43 @@ services['YouTube'] = new service('YouTube');
 services['ChromeCast'] = new service('ChromeCast');
 
 function service(name, url, protocols) {
-	this.running = false;
-	this.runningText = 'stopped';
-	this.name = name;
-	this.url = url;
+    this.running = false;
+    this.runningText = 'stopped';
+    this.name = name;
+    this.url = url;
 
-	this.getBody = function() {
-		var body = '<?xml version="1.0" encoding="UTF-8"?>'+
-		'<service xmlns="urn:dial-multiscreen-org:schemas:dial">'+
-		  '<name>'+this.name+'</name>'+
-		  '<options allowStop="true"/>'+
-		  '<state>'+this.runningText+'</state>';
-		  if (this.running) {
-		  	body += '<link rel="run" href="run" />';
-		  }
+    this.getBody = function() {
+        var body = '<?xml version="1.0" encoding="UTF-8"?>'+
+        '<service xmlns="urn:dial-multiscreen-org:schemas:dial">'+
+          '<name>'+this.name+'</name>'+
+          '<options allowStop="true"/>'+
+          '<state>'+this.runningText+'</state>';
+          if (this.running) {
+            body += '<link rel="run" href="run" />';
+          }
 
-		body += '</service>';
-		return body.toString();
-	}
+        body += '</service>';
+        return body.toString();
+    }
 
-	this.start = function() {
-		this.running = true;
-		this.runningText = 'running';
-		return this.getBody();
-	}
+    this.start = function() {
+        this.running = true;
+        this.runningText = 'running';
+        return this.getBody();
+    }
 
-	this.stop = function() {
-		this.running = false;
-		this.runningText = 'stopped';
-	}
+    this.stop = function() {
+        this.running = false;
+        this.runningText = 'stopped';
+    }
 
-	this.launchChrome = function() {
+    this.launchChrome = function() {
 
-	}
+    }
 }
 
 app.get('/apps/:name', function(req, res) {
-	res.setHeader('Access-Control-Allow-Method', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Method', 'GET, POST, DELETE, OPTIONS');
     res.setHeader('Access-Control-Expose-Headers', 'Location');
     res.setHeader('Application-URL', 'http://192.168.1.22:8008/apps');
     res.setHeader('Content-Type', 'application/xml');
@@ -140,7 +141,7 @@ app.get('/apps/:name', function(req, res) {
 });
 
 app.post('/apps/:name', function(req, res) {
-	res.setHeader('Access-Control-Allow-Method', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Method', 'GET, POST, DELETE, OPTIONS');
     res.setHeader('Access-Control-Expose-Headers', 'Location');
     res.setHeader('Application-URL', 'http://192.168.1.22:8008/apps');
     res.setHeader('Content-Type', 'application/xml');
@@ -155,5 +156,4 @@ console.log('Listening on port 8008');
 server.listen(8008, function() {
     console.log((new Date()) + ' Server is listening on port 8008');
 });
-
 
