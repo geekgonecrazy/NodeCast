@@ -1,6 +1,8 @@
 //Using @OrangeDog 's version of node-uuid https://github.com/OrangeDog/node-uuid includes uuid v5 which Chromecast uses
 var uuid = require('node-uuid');
 var dgram = require('dgram');
+var express = require('express');
+var app = express();
 
 var ssdp = dgram.createSocket('udp4');
 
@@ -33,11 +35,6 @@ ssdp.bind(1900, function(){
     ssdp.addMembership('239.255.255.250');
 });
 
-var express = require('express');
-var app = express();
-var http = require('http');
-server = http.createServer(app);
-var active_app = 'YouTube';
 
 app.use(express.bodyParser());
 
@@ -90,6 +87,8 @@ app.get('/apps', function(req, res) {
     }
 });
 
+var active_app = false;
+
 var services = [];
 services['c06ac0a4-95e9-4c68-83c5-75e3714ec409'] = new service('c06ac0a4-95e9-4c68-83c5-75e3714ec409', 'http://labs.geekgonecrazy.com/chromecast/receiver.html');
 services['YouTube'] = new service('YouTube');
@@ -118,6 +117,7 @@ function service(name, url, protocols) {
     this.start = function() {
         this.running = true;
         this.runningText = 'running';
+        active_app = this.name;
         return this.getBody();
     }
 
@@ -150,10 +150,7 @@ app.post('/apps/:name', function(req, res) {
 });
 
 
-console.log('Listening on port 8008');
-
-
-server.listen(8008, function() {
+app.listen(8008, function() {
     console.log((new Date()) + ' Server is listening on port 8008');
 });
 
