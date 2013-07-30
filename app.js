@@ -1,7 +1,7 @@
 //Using @OrangeDog 's version of node-uuid https://github.com/OrangeDog/node-uuid includes uuid v5 which Chromecast uses
 var uuid = require('node-uuid');
 var dgram = require('dgram');
-var exec = require('child_process').exec;
+var spawn = require('child_process').spawn;
 var express = require('express');
 var app = express();
 var WebSocket = require('faye-websocket'),
@@ -11,14 +11,25 @@ var server = http.createServer(app);
 
 var ssdp = dgram.createSocket('udp4');
 
+var ip_addr = '192.168.1.22';
+
+// I'll get the other platforms later.
+if (process.platform == 'darwin') {
+    var chrome_path = '/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome';
+    console.log('darwin');
+} else {
+    var chrome_path = '/usr/bin/google-chrome';
+}
+
+
 message = 'HTTP/1.1 200 OK\n'+
-'LOCATION: http://192.168.1.21:8008/ssdp/device-desc.xml\n'+
+'LOCATION: http://'+ip_addr+':8008/ssdp/device-desc.xml\n'+
 'CACHE-CONTROL: max-age=1800\n'+
 'CONFIGID.UPNP.ORG: 7337\n'+
 'BOOTID.UPNP.ORG: 7337\n'+
 'USN: uuid:'+uuid.v5({ns: uuid.ns.DNS, data: "test"})+
 '\nST: urn:dial-multiscreen-org:service:dial:1\n\n';
-console.log(message);
+
 ssdp.on('listening', function () {
     console.log('SSDP started');
 });
@@ -59,7 +70,7 @@ app.get('/ssdp/device-desc.xml', function(req, res) {
         '<major>1</major>'+
         '<minor>0</minor>'+
         '</specVersion>'+
-        '<URLBase>http://192.168.1.21:8008</URLBase>'+
+        '<URLBase>http://'+ip_addr+':8008</URLBase>'+
         '<device>'+
             '<deviceType>urn:schemas-upnp-org:device:dail:1</deviceType>'+
             '<friendlyName>test</friendlyName>'+
@@ -80,7 +91,7 @@ app.get('/ssdp/device-desc.xml', function(req, res) {
 
     res.setHeader('Access-Control-Allow-Method', 'GET, POST, DELETE, OPTIONS');
     res.setHeader('Access-Control-Expose-Headers', 'Application-URL');
-    res.setHeader('Application-URL', 'http://192.168.1.21:8008/apps');
+    res.setHeader('Application-URL', 'http://'+ip_addr+':8008/apps');
     res.setHeader('Content-Type', 'application/xml');
 
     res.send(body);
@@ -92,7 +103,7 @@ app.get('/apps', function(req, res) {
     }
 });
 
-var active_app = 'YouTube';
+var active_app = false;
 
 var services = [];
 services['c06ac0a4-95e9-4c68-83c5-75e3714ec409'] = new service('c06ac0a4-95e9-4c68-83c5-75e3714ec409', 'http://labs.geekgonecrazy.com/chromecast/receiver.html');
@@ -119,7 +130,7 @@ function service(name, url, protocols) {
             body += '<link rel="run" href="web-17" />';
 	    
 	    body += '<servicedata xmlns="urn:chrome.google.com:cast">'+
-			'<connectionSvcURL>http://192.168.1.21:8008/connection/'+this.name+'</connectionSvcURL>'+
+			'<connectionSvcURL>http://'+ip_addr+':8008/connection/'+this.name+'</connectionSvcURL>'+
 			'<protocols>'+
 			   '<protocol>ramp</protocol>'+
 			'</protocols>'+
@@ -149,10 +160,9 @@ function service(name, url, protocols) {
         this.runningText = 'stopped';
     }
 
-    this.launchChrome = function() {
-	var chrome = exec('/usr/bin/google-chrome --app='+this.url, function callback(err, stdout, stderr) {
-		this.pid = chrome.pid;
-	});
+    this.launchChrome = function() {     
+        var chrome = spawn(chrome_path, [' --app='+this.url]);
+
     }
 }
 
@@ -160,7 +170,7 @@ app.get('/apps/:name', function(req, res) {
     res.setHeader('Access-Control-Allow-Method', 'GET, POST, DELETE, OPTIONS');
     res.setHeader('Origin', 'https://www.google.com');
     res.setHeader('Access-Control-Expose-Headers', 'Location');
-    res.setHeader('Application-URL', 'http://192.168.1.21:8008/apps');
+    res.setHeader('Application-URL', 'http://'+ip_addr+':8008/apps');
     res.setHeader('Content-Type', 'application/xml');
     res.setHeader('Cache-control', 'no-cache, must-revalidate, no-store');
     res.send(services[req.params.name].getBody());
@@ -170,7 +180,7 @@ app.post('/apps/:name', function(req, res) {
     res.setHeader('Access-Control-Allow-Method', 'GET, POST, DELETE, OPTIONS');
     res.setHeader('Access-Control-Expose-Headers', 'Location');
     res.setHeader('Content-Type', 'application/xml');
-    res.setHeader('Location', 'http://192.168.1.21:8008/apps/c06ac0a4-95e9-4c68-83c5-75e3714ec409/web-17');
+    res.setHeader('Location', 'http://'+ip_addr+':8008/apps/c06ac0a4-95e9-4c68-83c5-75e3714ec409/web-17');
     res.setHeader('Access-Control-Allow-Origin', 'https://www.google.com');
     res.send(201, services[req.params.name].start());
 });
@@ -179,7 +189,7 @@ app.post('/connection/:name', function(req, res) {
     res.setHeader('Access-Control-Allow-Method', 'POST,  OPTIONS');
     res.setHeader('Access-Control-Expose-Headers', 'Location');
     res.setHeader('Content-Type', 'application/json');
-    res.send('{"URL":"ws://192.168.1.21:8008/session?24", "pingInterval":5}');
+    res.send('{"URL":"ws://'+ip_addr+':8008/session?24", "pingInterval":5}');
     
 });
 
@@ -209,12 +219,12 @@ server.on('upgrade', function(request, socket, body) {
 	if (services[active_app].serverSocket) {
 		
 		server = services[active_app].serverSocket;
-		 server.send(event.data);
+		 //server.send(event.data);
 	} else {
 		setTimeout(function() {
 		console.log('ran');
 		 server = services[active_app].serverSocket;
-		 server.send(event.data);
+		 //server.send(event.data);
 		},3000);
 	}
 
