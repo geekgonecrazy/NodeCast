@@ -11,16 +11,21 @@ var server = http.createServer(app);
 
 var ssdp = dgram.createSocket('udp4');
 
-var ip_addr = '192.168.1.22';
+var argv = process.argv;
+
+console.log(argv);
+var ip_addr = '192.168.1.21';
 
 // I'll get the other platforms later.
 if (process.platform == 'darwin') {
     var chrome_path = '/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome';
     console.log('darwin');
-} else {
+} else if (process.platform == 'linux') {
+    console.log(process.platform);
     var chrome_path = '/usr/bin/google-chrome';
+} else if (process.platform.match(/^win/)){
+    var chrome_path = '';
 }
-
 
 message = 'HTTP/1.1 200 OK\n'+
 'LOCATION: http://'+ip_addr+':8008/ssdp/device-desc.xml\n'+
@@ -50,7 +55,6 @@ ssdp.on('message', function (msg, rinfo) {
 ssdp.bind(1900, function(){
     ssdp.addMembership('239.255.255.250');
 });
-
 
 app.use(express.bodyParser());
 
@@ -129,24 +133,24 @@ function service(name, url, protocols) {
           if (this.running) {
             body += '<link rel="run" href="web-17" />';
 	    
-	    body += '<servicedata xmlns="urn:chrome.google.com:cast">'+
-			'<connectionSvcURL>http://'+ip_addr+':8008/connection/'+this.name+'</connectionSvcURL>'+
-			'<protocols>'+
-			   '<protocol>ramp</protocol>'+
-			'</protocols>'+
-			'<activity-status xmlns="urn:chrome.google.com:cast">'+
-			'<description>YouTube TV</description>'+
-				'<image src="https://s.ytimg.com/yts/favicon-vfldLzJxy.ico"/>'+
-			'</activity-status>'+
-		'</servicedata>';
-          }
+    	    body += '<servicedata xmlns="urn:chrome.google.com:cast">'+
+    			'<connectionSvcURL>http://'+ip_addr+':8008/connection/'+this.name+'</connectionSvcURL>'+
+    			'<protocols>'+
+    			   '<protocol>ramp</protocol>'+
+    			'</protocols>'+
+    			'<activity-status xmlns="urn:chrome.google.com:cast">'+
+    			'<description>YouTube TV</description>'+
+    				'<image src="https://s.ytimg.com/yts/favicon-vfldLzJxy.ico"/>'+
+    			'</activity-status>'+
+    		    '</servicedata>';
+            }
 
         body += '</service>';
         return body.toString();
     }
 
     this.start = function() {
-	this.launchChrome();
+        this.launchChrome();
 
         this.running = true;
         this.runningText = 'running';
