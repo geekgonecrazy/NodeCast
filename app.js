@@ -13,8 +13,9 @@ var ssdp = dgram.createSocket('udp4');
 
 var argv = process.argv;
 
-console.log(argv);
-var ip_addr = '192.168.1.21';
+if (typeof argv[2] !== 'undefined') {
+    ip_addr = argv[2];
+}
 
 // I'll get the other platforms later.
 if (process.platform == 'darwin') {
