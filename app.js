@@ -1,13 +1,18 @@
 //Using @OrangeDog 's version of node-uuid https://github.com/OrangeDog/node-uuid includes uuid v5 which Chromecast uses
 var uuid = require('node-uuid');
 var dgram = require('dgram');
+var exec = require('child_process').exec;
 var express = require('express');
 var app = express();
+var WebSocket = require('faye-websocket'),
+    http      = require('http');
+
+var server = http.createServer(app);
 
 var ssdp = dgram.createSocket('udp4');
 
 message = 'HTTP/1.1 200 OK\n'+
-'LOCATION: http://192.168.1.22:8008/ssdp/device-desc.xml\n'+
+'LOCATION: http://192.168.1.21:8008/ssdp/device-desc.xml\n'+
 'CACHE-CONTROL: max-age=1800\n'+
 'CONFIGID.UPNP.ORG: 7337\n'+
 'BOOTID.UPNP.ORG: 7337\n'+
@@ -54,7 +59,7 @@ app.get('/ssdp/device-desc.xml', function(req, res) {
         '<major>1</major>'+
         '<minor>0</minor>'+
         '</specVersion>'+
-        '<URLBase>http://192.168.1.22:8008</URLBase>'+
+        '<URLBase>http://192.168.1.21:8008</URLBase>'+
         '<device>'+
             '<deviceType>urn:schemas-upnp-org:device:dail:1</deviceType>'+
             '<friendlyName>test</friendlyName>'+
@@ -74,8 +79,8 @@ app.get('/ssdp/device-desc.xml', function(req, res) {
     '</root>';
 
     res.setHeader('Access-Control-Allow-Method', 'GET, POST, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Expose-Headers', 'Location');
-    res.setHeader('Application-URL', 'http://192.168.1.22:8008/apps');
+    res.setHeader('Access-Control-Expose-Headers', 'Application-URL');
+    res.setHeader('Application-URL', 'http://192.168.1.21:8008/apps');
     res.setHeader('Content-Type', 'application/xml');
 
     res.send(body);
@@ -87,7 +92,7 @@ app.get('/apps', function(req, res) {
     }
 });
 
-var active_app = false;
+var active_app = 'YouTube';
 
 var services = [];
 services['c06ac0a4-95e9-4c68-83c5-75e3714ec409'] = new service('c06ac0a4-95e9-4c68-83c5-75e3714ec409', 'http://labs.geekgonecrazy.com/chromecast/receiver.html');
@@ -99,6 +104,10 @@ function service(name, url, protocols) {
     this.runningText = 'stopped';
     this.name = name;
     this.url = url;
+    this.pid = false;
+
+    this.serverSocket = false;
+    this.clientSocket = false;
 
     this.getBody = function() {
         var body = '<?xml version="1.0" encoding="UTF-8"?>'+
@@ -107,7 +116,18 @@ function service(name, url, protocols) {
           '<options allowStop="true"/>'+
           '<state>'+this.runningText+'</state>';
           if (this.running) {
-            body += '<link rel="run" href="run" />';
+            body += '<link rel="run" href="web-17" />';
+	    
+	    body += '<servicedata xmlns="urn:chrome.google.com:cast">'+
+			'<connectionSvcURL>http://192.168.1.21:8008/connection/'+this.name+'</connectionSvcURL>'+
+			'<protocols>'+
+			   '<protocol>ramp</protocol>'+
+			'</protocols>'+
+			'<activity-status xmlns="urn:chrome.google.com:cast">'+
+			'<description>YouTube TV</description>'+
+				'<image src="https://s.ytimg.com/yts/favicon-vfldLzJxy.ico"/>'+
+			'</activity-status>'+
+		'</servicedata>';
           }
 
         body += '</service>';
@@ -115,9 +135,12 @@ function service(name, url, protocols) {
     }
 
     this.start = function() {
+	this.launchChrome();
+
         this.running = true;
         this.runningText = 'running';
         active_app = this.name;
+
         return this.getBody();
     }
 
@@ -127,14 +150,17 @@ function service(name, url, protocols) {
     }
 
     this.launchChrome = function() {
-
+	var chrome = exec('/usr/bin/google-chrome --app='+this.url, function callback(err, stdout, stderr) {
+		this.pid = chrome.pid;
+	});
     }
 }
 
 app.get('/apps/:name', function(req, res) {
     res.setHeader('Access-Control-Allow-Method', 'GET, POST, DELETE, OPTIONS');
+    res.setHeader('Origin', 'https://www.google.com');
     res.setHeader('Access-Control-Expose-Headers', 'Location');
-    res.setHeader('Application-URL', 'http://192.168.1.22:8008/apps');
+    res.setHeader('Application-URL', 'http://192.168.1.21:8008/apps');
     res.setHeader('Content-Type', 'application/xml');
     res.setHeader('Cache-control', 'no-cache, must-revalidate, no-store');
     res.send(services[req.params.name].getBody());
@@ -143,14 +169,73 @@ app.get('/apps/:name', function(req, res) {
 app.post('/apps/:name', function(req, res) {
     res.setHeader('Access-Control-Allow-Method', 'GET, POST, DELETE, OPTIONS');
     res.setHeader('Access-Control-Expose-Headers', 'Location');
-    res.setHeader('Application-URL', 'http://192.168.1.22:8008/apps');
     res.setHeader('Content-Type', 'application/xml');
-    res.setHeader('Cache-control', 'no-cache, must-revalidate, no-store');
-    res.send(services[req.params.name].start());
+    res.setHeader('Location', 'http://192.168.1.21:8008/apps/c06ac0a4-95e9-4c68-83c5-75e3714ec409/web-17');
+    res.setHeader('Access-Control-Allow-Origin', 'https://www.google.com');
+    res.send(201, services[req.params.name].start());
 });
 
+app.post('/connection/:name', function(req, res) {
+    res.setHeader('Access-Control-Allow-Method', 'POST,  OPTIONS');
+    res.setHeader('Access-Control-Expose-Headers', 'Location');
+    res.setHeader('Content-Type', 'application/json');
+    res.send('{"URL":"ws://192.168.1.21:8008/session?24", "pingInterval":5}');
+    
+});
 
-app.listen(8008, function() {
+var session = [];
+
+server.on('upgrade', function(request, socket, body) {
+  //console.log(request, body);
+  if (WebSocket.isWebSocket(request)) {
+    var ws = new WebSocket(request, socket, body);
+
+    ws.on('message', function(event) {
+      console.log('--on message--');
+      //console.log(event);
+      var data = JSON.parse(event.data);
+
+      //console.log(data);
+      if (data.type == 'REGISTER') {
+      	if (typeof services[data.name] !== 'undefined') {
+		services[data.name].pingInterval = data.pingInterval;
+		console.log('server connected');
+		services[data.name].serverSocket = ws;
+	}
+      } else {
+         console.log('client connected');
+	 services[active_app].clientSocket = ws;
+	console.log(services[active_app].serverSocket);
+	if (services[active_app].serverSocket) {
+		
+		server = services[active_app].serverSocket;
+		 server.send(event.data);
+	} else {
+		setTimeout(function() {
+		console.log('ran');
+		 server = services[active_app].serverSocket;
+		 server.send(event.data);
+		},3000);
+	}
+
+      }
+      //console.log(event.target.url);
+
+      //console.log(event);
+      //ws.send(event.data);
+    });
+
+    ws.on('close', function(event) {
+      console.log('close', event.code, event.reason);
+      ws = null;
+    });
+  }
+});
+
+//server.listen(8000);
+
+
+server.listen(8008, function() {
     console.log((new Date()) + ' Server is listening on port 8008');
 });
 
