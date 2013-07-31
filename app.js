@@ -188,7 +188,7 @@ service = function(name, url, protocols) {
 
 var NodeCast = {
     init : function() {
-        this.services['c06ac0a4-95e9-4c68-83c5-75e3714ec409'] = new service('c06ac0a4-95e9-4c68-83c5-75e3714ec409', 'http://labs.geekgonecrazy.com/chromecast/receiver.html');
+        this.services['TicTacToe'] = new service('TicTacToe', 'http://www.gstatic.com/eureka/sample/tictactoe/tictactoe.html');
         this.services['YouTube'] = new service('YouTube');
         this.services['ChromeCast'] = new service('ChromeCast');
     },
