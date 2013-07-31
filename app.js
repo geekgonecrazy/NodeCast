@@ -1,3 +1,9 @@
+/*
+    NodeCast - A node based ChromeCast emulator
+    Author: Aaron Ogle
+
+*/
+
 //Using @OrangeDog 's version of node-uuid https://github.com/OrangeDog/node-uuid includes uuid v5 which Chromecast uses
 var uuid = require('node-uuid');
 var dgram = require('dgram');
@@ -127,6 +133,10 @@ service = function(name, url, protocols) {
     this.name = name;
     this.url = url;
     this.pid = false;
+
+    this.protocols = [];
+
+    this.sessions = [];
 
     this.connection = false;
 
@@ -260,17 +270,44 @@ app.post('/apps/:name', NodeCast.apps.post);
 
 app.post('/connection/:name', NodeCast.connection.base);
 
-function session() {
+function session(session_id) {
     this.server = false;
     this.client = false;
     this.ServerQueue = [];
+    this.ClientQueue = [];
+    this.session_id = session_id;
 
     this.addServer = function(socket) {
+        console.log('Session['+this.session_id+'] Server Added.');
         this.server = socket;
+        if (this.ServerQueue.length > 0) {
+            for (i in this.ServerQueue) {
+                console.log('Session['+this.session_id+'] Checking protocols..');
+    
+                if (NodeCast.services[NodeCast.active_app].protocols.indexOf(this.ServerQueue[i][0]) > -1) {
+                    this.server.send(this.ServerQueue[i]);
+                    console.log('Session['+this.session_id+'] Delivered Queued Message To Server.');
+                }
+
+                delete this.ServerQueue[i];
+            }
+        }
     }
 
     this.addClient = function(socket) {
+        console.log('Session['+this.session_id+'] Client Added.');
         this.client = socket;
+        if (this.ClientQueue.length > 0) {
+            for (i in this.ClientQueue) {
+                console.log('Session['+this.session_id+'] Checking protocols..');
+
+                if (NodeCast.services[NodeCast.active_app].protocols.indexOf(this.ClientQueue[i][0]) > -1) {
+                    this.server.send(this.ClientQueue[i]);
+                    console.log('Session['+this.session_id+'] Delivered Queued Message To Server.');
+                }
+                delete this.ClientQueue[i];
+            }
+        }
     }
 
     this.getServer = function() {
@@ -279,6 +316,50 @@ function session() {
 
     this.getClient = function() {
         return this.client;
+    }
+
+    this.sendToClient = function(data) {
+        console.log('Session['+this.session_id+'] Sending Message to Client.');
+        if (this.client) {
+            this.client.send(data);
+        } else {
+            console.log('Session['+this.session_id+'] Client not available.  Queueing');
+            this.ClientQueue.push(data);
+        }
+    }
+
+    this.sendToServer = function(data) {
+        console.log('Session['+this.session_id+'] Sending Message to Server.');
+        if (this.server) {
+            if (NodeCast.services[NodeCast.active_app].protocols.indexOf(data[0]) > -1) {
+                this.server.send(data);
+            }
+        } else {
+            console.log('Session['+this.session_id+'] Server not available.  Queueing');
+            this.ServerQueue.push(data);
+        }
+    }
+
+    this.connectClientToServer = function() {
+        var session_id = this.session_id;
+        // If Chrome is up make it aware of the client.
+        console.log('Session['+session_id+'] Connecting Client To Server...');
+        if (NodeCast.services[NodeCast.active_app].connection) {
+            if (!this.server) {
+                console.log('Session['+session_id+'] Connection open sending channel request.');
+                NodeCast.services[NodeCast.active_app].connection.send('{"channel":0, "requestId":'+session_id+', "type": "CHANNELREQUEST"}');
+            }
+            
+        } else {
+            console.log('Session['+session_id+'] Connection not open.  Waiting for connection to open to deliver request');
+            waitConnection = setInterval(function() {
+                if (NodeCast.services[NodeCast.active_app].connection) {
+                    NodeCast.services[NodeCast.active_app].connection.send('{"channel":0, "requestId":'+session_id+', "type": "CHANNELREQUEST"}');
+                    clearInterval(waitConnection);
+                    console.log('Session['+session_id+'] Connection became available.  Channel Request sent!');
+                }
+            },100);
+        }
     }
 }
 
@@ -299,7 +380,7 @@ server.on('upgrade', function(request, socket, body) {
   if (WebSocket.isWebSocket(request) && headers.connection.toLowerCase() == 'upgrade' && headers.upgrade.toLowerCase() == 'websocket') {
 
     var url = request.url.substring(1);
-    console.log(url);
+    //console.log(url);
 
     if (url == 'connection' && fromChrome) {
         console.log('--connection--');
@@ -309,9 +390,11 @@ server.on('upgrade', function(request, socket, body) {
             //console.log(data);
             if (data.type == 'REGISTER') {
                 if (typeof NodeCast.services[data.name] !== 'undefined') {
-                    //services[data.name].pingInterval = data.pingInterval;
-                    //console.log('server connected');
+                    NodeCast.services[data.name].pingInterval = data.pingInterval;
+                    NodeCast.services[data.name].protocols = data.protocols;
 
+                    //console.log('server connected');
+                    //console.log(data);
                     NodeCast.services[NodeCast.active_app].connection = ws;
 
                     //ws.send('{"channel":0, "requestId":'+server_session_id+', "type": "CHANNELREQUEST"}');
@@ -330,86 +413,42 @@ server.on('upgrade', function(request, socket, body) {
 
         var ws = new WebSocket(request, socket, body);
 
-        console.log(host+'--session--'+session_id);
+        console.log('Session['+session_id+'] Traffic From: '+host);
+
+        // Create a new session if it doesn't exist.
+        if (typeof sessions[session_id] == 'undefined') {
+            sessions[session_id] = new session(session_id);
+        }
+
+        // if fromChrome then add server socket else add to client
         if (fromChrome) {
-            console.log('fromChrome', typeof sessions[session_id]);
-            if (typeof sessions[session_id] == 'undefined') {
-                console.log('Browser Connecting to session');
-                sessions[session_id] = new session();
+            if (!sessions[session_id].getServer()) {
                 sessions[session_id].addServer(ws);
             }
 
         } else {
-            console.log('notChrome');
-            if (typeof sessions[session_id] == 'undefined') {
-                console.log('Client Connecting to session');
-                sessions[session_id] = new session();
+            if (!sessions[session_id].getClient()) {
                 sessions[session_id].addClient(ws);
+                sessions[session_id].connectClientToServer();
             }
         }
-        
+
+        // Actually handle the message.
         ws.on('message', function(event) {
             
             data = JSON.parse(event.data);
 
+            console.log(data[0], NodeCast.services[NodeCast.active_app].protocols);
+
             if (data[0] == 'cm') {
                 console.log('pong');
                 ws.send('["cm", { "type" : "pong" }]');
-            } 
-
-            if (data[0] == 'com.google.chromecast.demo.tictactoe') {
-                console.log('data: '+data[1]);
-
-                if (fromChrome) {
-                    console.log('socket from chrome');
-                    if (sessions[session_id].client) {
-                        console.log('client connectd sending..');
-                        sessions[session_id].client.send(event.data);
-                    } else {
-                        console.log('client not connected waiting..');
-                        ClientWait = setInterval(function() {
-                            if (sessions[session_id].getClient()) {
-                                sessions[session_id].getClient().send(event.data);
-                                console.log('Client Finally Connected sending..');
-                                clearInterval(ClientWait);    
-                            }
-                        },100);
-                    }
-                } else {
-                    console.log('socket from client');
-                    if (NodeCast.services[NodeCast.active_app].connection) {
-                        if (!sessions[session_id].server) {
-                            console.log('Connection but no established session.')
-                            NodeCast.services[NodeCast.active_app].connection.send('{"channel":0, "requestId":'+session_id+', "type": "CHANNELREQUEST"}');
-                        }
-                        
-                    } else {
-                        waitConnection = setInterval(function() {
-                            if (NodeCast.services[NodeCast.active_app].connection) {
-                                NodeCast.services[NodeCast.active_app].connection.send('{"channel":0, "requestId":'+session_id+', "type": "CHANNELREQUEST"}');
-                                clearInterval(waitConnection);
-                                console.log('Connected client');
-                            }
-                        },100);
-                    }
-                    
-                    if (sessions[session_id].server) {
-                        console.log('Server available sending..');
-                        sessions[session_id].server.send(event.data);
-                    } else {
-                        console.log('Server unavailable waiting to send data...');
-                        waitServer = setInterval(function() {
-                            if (sessions[session_id].server) {
-                                sessions[session_id].server.send(event.data);
-                                console.log('Server now available and sending data..');
-                                clearInterval(waitServer);                    
-                            }
-                        },100);
-                    }
-                }
-                    
             } else {
-                console.log(data);
+                if (fromChrome) {
+                    sessions[session_id].sendToClient(data);
+                } else {
+                    sessions[session_id].sendToServer(data);
+                }  
             }
             
         });
