@@ -112,7 +112,7 @@ var DIAL = {
             if (decodedMsg.indexOf('M-SEARCH') > -1 && decodedMsg.indexOf('urn:dial-multiscreen-org:service:dial:1') > -1) {
                 ssdp.send(new Buffer(DIAL.response_msg()), 0, DIAL.response_msg().length, rinfo.port, rinfo.address, function(err, bytes){
                     if (!err) {
-                        console.log('DIAL response to: '+rinfo.address);
+                        //console.log('DIAL response to: '+rinfo.address);
                     }
                 });
             }
@@ -182,7 +182,7 @@ service = function(name, url, protocols) {
     }
 
     this.launchChrome = function() {     
-        var chrome = spawn(device_info.chrome_path, [' --app='+this.url]);
+        //var chrome = spawn(device_info.chrome_path, [' --app='+this.url]);
     }
 }
 
@@ -280,6 +280,66 @@ function session(session_id) {
     this.addServer = function(socket) {
         console.log('Session['+this.session_id+'] Server Added.');
         this.server = socket;
+        
+        this.sendQtoServer();
+    }
+
+    this.addClient = function(socket) {
+        console.log('Session['+this.session_id+'] Client Added.');
+        this.client = socket;
+        
+        this.sendQtoClient();
+        this.connectClientToServer();
+        this.startClientPingLoop();
+
+    }
+
+    this.getServer = function(socket, callback) {
+        if (!this.server) {
+            this.addServer(socket);
+        }
+
+        callback();
+    }
+
+    this.getClient = function(socket, callback) {
+        if (!this.client) {
+            this.addClient(socket);
+            
+        }
+        
+        callback();
+    }
+
+    this.sendToClient = function(data) {
+        console.log('Session['+this.session_id+'] Sending message to client.');
+
+        var msg = JSON.parse(data);
+        if (this.client) {
+            this.client.send(data);
+        } else {
+            console.log('Session['+this.session_id+'] Client not available. Will send when available');
+            this.ClientQueue.push(data);
+            console.log('Session['+this.session_id+'] Queue Contents: '+this.ClientQueue);
+        }
+    }
+
+    this.sendToServer = function(data) {
+
+        console.log('Session['+this.session_id+'] Sending Message to Server.');
+
+        var msg = JSON.parse(data);
+        if (this.server) {
+            this.server.send(data);
+        } else {
+            console.log('Session['+this.session_id+'] Client not available. Will send when available');
+            this.ServerQueue.push(data);
+            console.log('Session['+this.session_id+'] Queue Contents: '+this.ServerQueue);
+        }
+    }
+
+    this.sendQtoServer = function() {
+        console.log('Session['+this.session_id+'] Sending client Queue');
         if (this.ServerQueue.length > 0) {
             for (i in this.ServerQueue) {
                 console.log('Session['+this.session_id+'] Checking protocols..');
@@ -297,9 +357,8 @@ function session(session_id) {
         }
     }
 
-    this.addClient = function(socket) {
-        console.log('Session['+this.session_id+'] Client Added.');
-        this.client = socket;
+    this.sendQtoClient = function() {
+        console.log('Session['+this.session_id+'] Sending client Queue');
         if (this.ClientQueue.length > 0) {
             for (i in this.ClientQueue) {
                 console.log('Session['+this.session_id+'] Checking protocols..');
@@ -314,46 +373,6 @@ function session(session_id) {
 
                 delete this.ClientQueue[i];
             }
-        }
-
-    }
-
-    this.getServer = function(callback) {
-        callback(this.server);
-    }
-
-    this.getClient = function(callback) {
-        callback(this.client);
-    }
-
-    this.sendToClient = function(data) {
-        console.log('Session['+this.session_id+'] Sending Message to Client.');
-        var msg = JSON.parse(data);
-        if (this.client) {
-            if (NodeCast.services[NodeCast.active_app].protocols.indexOf(msg[0]) > -1) {
-                this.client.send(data);
-            }
-            
-        } else {
-            console.log('Session['+this.session_id+'] Client not available.  Queueing');
-            this.ClientQueue.push(data);
-            console.log('Session['+this.session_id+'] Queue Contents: '+this.ClientQueue);
-        }
-    }
-
-    this.sendToServer = function(data) {
-        console.log('Session['+this.session_id+'] Sending Message to Server.');
-        var msg = JSON.parse(data);
-        if (this.server) {
-            if (NodeCast.services[NodeCast.active_app].protocols.indexOf(msg[0]) > -1) {
-                this.server.send(data);
-            } else {
-                console.log(msg)
-            }
-        } else {
-            console.log('Session['+this.session_id+'] Server not available.  Queueing');
-            this.ServerQueue.push(data);
-            console.log('Session['+this.session_id+'] Queue Contents: '+this.ServerQueue);
         }
     }
 
@@ -378,6 +397,40 @@ function session(session_id) {
             },100);
         }
     }
+
+    this.pingServer = function() {
+        var session_id = this.session_id; 
+        
+        //console.log('Session['+session_id+'] Server PONG');
+        sessions[session_id].server.send('["cm", { "type" : "pong" }]');
+
+        
+    }
+
+    this.pingClient = function() {
+        //console.log('Session['+this.session_id+'] Client PING');
+        this.client.send('["cm", { "type" : "ping" }]');
+
+    }
+
+    this.startClientPingLoop = function() {
+        var session_id = this.session_id;
+        if (this.client) {
+            pingTime = setInterval(function() {
+                sessions[session_id].pingClient();
+            }, 5000);
+        }
+    }
+
+    this.serverClose = function() {
+        console.log('Session['+this.session_id+'] Server Closed Connection');
+        delete this;
+    }
+
+    this.clientClose = function() {
+        console.log('Session['+this.session_id+'] Client Closed Connection');
+        delete this;
+    }
 }
 
 var sessions = [];
@@ -399,70 +452,92 @@ server.on('upgrade', function(request, socket, body) {
     var url = request.url.substring(1);
     //console.log(url);
 
-    ws = new WebSocket(request, socket, body, {ping: 5});
+    if (url == 'connection' && fromChrome) {
+
+        ws = new WebSocket(request, socket, body);
         ws.on('message', function(event) {
             var data = JSON.parse(event.data);
-            //console.log(data);
-            if (url == 'connection' && fromChrome) {
-                if (data.type == 'REGISTER') {
-                    if (typeof NodeCast.services[data.name] !== 'undefined') {
-                        NodeCast.services[data.name].pingInterval = data.pingInterval;
-                        NodeCast.services[data.name].protocols = data.protocols;
+            console.log('Message From Connection: '+event.data);
 
-                        //console.log('server connected');
-                        //console.log(data);
-                        NodeCast.services[NodeCast.active_app].connection = ws;
+            if (data.type == 'REGISTER') {
+                if (typeof NodeCast.services[data.name] !== 'undefined') {
+                    NodeCast.services[data.name].pingInterval = data.pingInterval;
+                    NodeCast.services[data.name].protocols = data.protocols;
 
-                        //ws.send('{"channel":0, "requestId":'+server_session_id+', "type": "CHANNELREQUEST"}');
-                        
-                    }
-                } else if (data.type == 'CHANNELRESPONSE') {
-                    ws.send('{"URL":"ws://localhost:8008/session?'+data.requestId+'", "channel":0, "requestId":'+data.requestId+', "type":"NEWCHANNEL"}');
-                } else {
-                    console.log(event.data);
+                    //console.log('server connected');
+                    //console.log(data);
+                    NodeCast.services[NodeCast.active_app].connection = ws;
+
+                    //ws.send('{"channel":0, "requestId":'+server_session_id+', "type": "CHANNELREQUEST"}');
+                    
                 }
+            } else if (data.type == 'CHANNELRESPONSE') {
+                NodeCast.services[NodeCast.active_app].connection.send('{"URL":"ws://localhost:8008/session?'+data.requestId+'", "channel":0, "requestId":'+data.requestId+', "type":"NEWCHANNEL"}');
+            } else {
+                console.log(event.data);
             }
 
-            if (url.indexOf('session') > -1) {
-                session_id = url.split('?')[1];
-                console.log('Session['+session_id+'] Traffic From: '+host);
+        });
+    }
 
-                // Create a new session if it doesn't exist.
-                if (typeof sessions[session_id] == 'undefined') {
-                    sessions[session_id] = new session(session_id);
-                }
+    if (url.indexOf('session') > -1) {
+        var session_id = url.split('?')[1];
 
-                // if fromChrome then add server socket else add to client
-                if (fromChrome) {
+        ws = new WebSocket(request, socket, body);
 
-                    sessions[session_id].getServer(function(status) {
-                        if (!status) {
-                            sessions[session_id].addServer(ws);
-                        } 
-                    });
+        ws.on('message', function(event) {
 
-                } else {
-                    sessions[session_id].getClient(function(status) {
-                        if (!status) {
-                            sessions[session_id].addClient(ws);
-                            sessions[session_id].connectClientToServer();
-                        }
-                    });
-                }
+            if (host.indexOf('localhost') > -1) {
+                fromChrome = true;
+            } else {
+                fromChrome = false;
+            }
 
-                if (data[0] == 'cm') {
-                    console.log('pong');
-                    ws.send('["cm", { "type" : "pong" }]');
-                } else {
-                    if (fromChrome) {
-                        sessions[session_id].sendToClient(event.data);
+            var data = JSON.parse(event.data);
+
+            console.log('Session['+session_id+'] Traffic From: '+host);
+
+            // Create a new session if it doesn't exist.
+            if (typeof sessions[session_id] == 'undefined') {
+                sessions[session_id] = new session(session_id);
+            }
+
+            // if fromChrome then add server socket else add to client
+            if (fromChrome) {
+
+                sessions[session_id].getServer(ws, function() {
+                    if (data[0] == 'cm') {
+                        sessions[session_id].pingServer();
                     } else {
-                        sessions[session_id].sendToServer(event.data);
-                    }  
-                }
+                        console.log('sending data to client supposedly');
+                        sessions[session_id].sendToClient(event.data);
+                    }
+                    
+                });
 
+            } else {
+
+                sessions[session_id].getClient(ws, function() {
+                    if (data[0] == 'cm') {
+                        
+                    } else {
+                        console.log('sending data to server supposedly');
+                        sessions[session_id].sendToServer(event.data);
+                    }
+                });
             }
-    });
+
+        });
+
+        /*ws.on('close', function(event) {
+            console.log(event.code, event.reason);
+            if (fromChrome) {
+                sessions[session_id].serverClose();
+            } else {
+                sessions[session_id].clientClose();
+            }
+        })*/
+    }
     
   } else {
     console.log('Invalid Upgrade');
@@ -474,4 +549,3 @@ server.on('upgrade', function(request, socket, body) {
 server.listen(8008, function() {
     console.log((new Date()) + ' Server is listening on port 8008');
 });
-
