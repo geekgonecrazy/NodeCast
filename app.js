@@ -182,7 +182,7 @@ service = function(name, url, protocols) {
     }
 
     this.launchChrome = function() {     
-        //var chrome = spawn(device_info.chrome_path, [' --app='+this.url]);
+        var chrome = spawn(device_info.chrome_path, [' --app='+this.url]);
     }
 }
 
