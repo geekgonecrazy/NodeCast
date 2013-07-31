@@ -17,3 +17,15 @@ node app.js <ip address> <device name>
 ```
 Ip Address must be a local ip it can listen on.
 Device name is optional defaults to "NodeCast"
+
+Currently only the TicTacToe example works.  
+TicTacToe Source: https://github.com/googlecast/cast-android-tictactoe
+
+Android Google Cast SDK: https://developers.google.com/cast/downloads/GoogleCastSdkAndroid-1.0.0.zip
+
+Will need to add Google Cast SDK jar file to project before compiling.
+
+
+
+If you want to use your own reciever app just add a service to NodeCast init on line 191.
+I plan to make it load from google's list soon, and make it easier to specify your own.
