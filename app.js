@@ -437,7 +437,6 @@ var sessions = [];
 var session_count = 0;
 
 server.on('upgrade', function(request, socket, body) {
-  //console.log(request, body);
   var headers = request.headers;
   var host = headers.host;
 
@@ -450,7 +449,6 @@ server.on('upgrade', function(request, socket, body) {
   if (WebSocket.isWebSocket(request) && headers.connection.toLowerCase() == 'upgrade' && headers.upgrade.toLowerCase() == 'websocket') {
 
     var url = request.url.substring(1);
-    //console.log(url);
 
     if (url == 'connection' && fromChrome) {
 
@@ -464,12 +462,8 @@ server.on('upgrade', function(request, socket, body) {
                     NodeCast.services[data.name].pingInterval = data.pingInterval;
                     NodeCast.services[data.name].protocols = data.protocols;
 
-                    //console.log('server connected');
-                    //console.log(data);
                     NodeCast.services[NodeCast.active_app].connection = ws;
 
-                    //ws.send('{"channel":0, "requestId":'+server_session_id+', "type": "CHANNELREQUEST"}');
-                    
                 }
             } else if (data.type == 'CHANNELRESPONSE') {
                 NodeCast.services[NodeCast.active_app].connection.send('{"URL":"ws://localhost:8008/session?'+data.requestId+'", "channel":0, "requestId":'+data.requestId+', "type":"NEWCHANNEL"}');
@@ -509,7 +503,6 @@ server.on('upgrade', function(request, socket, body) {
                     if (data[0] == 'cm') {
                         sessions[session_id].pingServer();
                     } else {
-                        console.log('sending data to client supposedly');
                         sessions[session_id].sendToClient(event.data);
                     }
                     
@@ -519,9 +512,8 @@ server.on('upgrade', function(request, socket, body) {
 
                 sessions[session_id].getClient(ws, function() {
                     if (data[0] == 'cm') {
-                        
+                        // Maybe keep track of pong's to kill connection?
                     } else {
-                        console.log('sending data to server supposedly');
                         sessions[session_id].sendToServer(event.data);
                     }
                 });
