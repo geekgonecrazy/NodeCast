@@ -1,15 +1,15 @@
 NodeCast
 ========
 
-Inspired by: https://github.com/dz0ny/leapcast
+Inspired by: [leapcast](https://github.com/dz0ny/leapcast)
 
 Not satisfied with just knowing the basics of how it works, had to dig in and figure it out.
 
-I could have contributed to dz0ny's project.  But i'm not familiar with the python libraries he's using.
+I could have contributed to [dz0ny](https://github.com/dz0ny)'s project.  But i'm not familiar with the python libraries he's using.
 
 Plus this just makes perfect sense to write in node.
 
-```Bash
+```
 git clone https://github.com/AaronOgle/NodeCast.git
 cd NodeCast
 npm install
@@ -19,9 +19,9 @@ Ip Address must be a local ip it can listen on.
 Device name is optional defaults to "NodeCast"
 
 Currently only the TicTacToe example works.  
-TicTacToe Source: https://github.com/googlecast/cast-android-tictactoe
+[TicTacToe Source](https://github.com/googlecast/cast-android-tictactoe)
 
-Android Google Cast SDK: https://developers.google.com/cast/downloads/GoogleCastSdkAndroid-1.0.0.zip
+[Android Google Cast SDK](https://developers.google.com/cast/downloads/GoogleCastSdkAndroid-1.0.0.zip)
 
 Will need to add Google Cast SDK jar file to project before compiling.
 
